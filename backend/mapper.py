@@ -7,7 +7,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from codes import CODES  # Importiert codes.py aus dem Hauptverzeichnis
 
 # Konfiguration
-LLM_MODEL = "gpt-4o-mini"   # Stärkeres Modell für Analyse empfohlen    
+# LLM_MODEL = "gpt-4o-mini"   # Stärkeres Modell für Analyse empfohlen    
 EMB_MODEL = "text-embedding-3-small"
 LOW_CONF_THRESHOLD = 0.60
 
@@ -15,7 +15,7 @@ def embed_texts(client, texts):
     resp = client.embeddings.create(model=EMB_MODEL, input=texts)
     return np.array([e.embedding for e in resp.data])
 
-def run_mapping_step4(client, df):
+def run_mapping_step4(client, df, model_name: str = "gpt-4o-mini"):
     if df.empty: return df
     
     # Textspalte finden
@@ -58,7 +58,7 @@ def run_mapping_step4(client, df):
             try:
                 prompt = f"Mappe Text auf Code. JSON: {{'code': 'CODE'}}\nText: {df.at[idx, 'Beschreibung']}\nCodes:\n{code_summary}"
                 resp = client.chat.completions.create(
-                    model=LLM_MODEL, messages=[{"role": "user", "content": prompt}],
+                    model=model_name, messages=[{"role": "user", "content": prompt}],
                     response_format={"type": "json_object"}
                 )
                 res = json.loads(resp.choices[0].message.content)

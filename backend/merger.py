@@ -92,7 +92,7 @@ def merge_data_step3(extraction_result):
             
     return pd.DataFrame()
 
-def apply_ai_transformation(client, df: pd.DataFrame, instruction: str) -> pd.DataFrame:
+def apply_ai_transformation(client, df: pd.DataFrame, instruction: str, model_name: str = "gpt-4o") -> pd.DataFrame:
     """
     Passt den DataFrame basierend auf einer Nutzeranweisung per LLM an.
     """
@@ -127,7 +127,7 @@ def apply_ai_transformation(client, df: pd.DataFrame, instruction: str) -> pd.Da
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o", # Ein starkes Modell ist hier wichtig für korrekten Code
+            model=model_name, # Ein starkes Modell ist hier wichtig für korrekten Code
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}

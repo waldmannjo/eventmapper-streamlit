@@ -2,11 +2,11 @@
 # Analyse des Dokuments auf Statuscodes und Reason Codes.
 
 # Konfiguration
-LLM_MODEL = "gpt-4.1-2025-04-14" # "gpt-4o"  # Stärkeres Modell für Analyse empfohlen
+# LLM_MODEL = "gpt-4.1-2025-04-14" # "gpt-4o"  # Stärkeres Modell für Analyse empfohlen
 
 import json
 
-def analyze_structure_step1(client, text: str):
+def analyze_structure_step1(client, text: str, model_name: str = "gpt-4o"):
     system_prompt = "Du bist ein Experte für Datenanalyse. Antworte ausschließlich mit validem JSON."
     
     user_prompt = f"""
@@ -81,7 +81,7 @@ def analyze_structure_step1(client, text: str):
     """
 
     response = client.chat.completions.create(
-        model=LLM_MODEL,
+        model=model_name,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}

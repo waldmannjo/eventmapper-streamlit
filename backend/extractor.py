@@ -2,7 +2,7 @@
 # Extrahiere Statuscodes und Reasoncodes aus dem Dokument.
 
 # Konfiguration
-LLM_MODEL = "gpt-4o"  # Stärkeres Modell für Analyse empfohlen
+# LLM_MODEL = "gpt-4o"  # Stärkeres Modell für Analyse empfohlen
 
 
 import json
@@ -10,7 +10,7 @@ import io
 import pandas as pd
 from openai import OpenAI
 
-def extract_data_step2(client, text: str, status_scope: list, reason_scope: list):
+def extract_data_step2(client, text: str, status_scope: list, reason_scope: list, model_name: str = "gpt-4o"):
     """
     Extrahiert Daten basierend auf dem Scope (User-Auswahl).
     Priorisiert existierende Kombinationen im Text.
@@ -62,7 +62,7 @@ def extract_data_step2(client, text: str, status_scope: list, reason_scope: list
     """
 
     response = client.chat.completions.create(
-        model=LLM_MODEL,
+        model=model_name,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}

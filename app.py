@@ -2,9 +2,14 @@ import streamlit as st
 import pandas as pd
 from openai import OpenAI
 import backend as logic  # <-- Das ist unser neues Modul
+AVAILABLE_MODELS = ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"]
 
 st.set_page_config(page_title="Eventmapper", layout="wide")
 st.title("Eventmapper")
+
+# --- KONFIGURATION ---
+# Liste der verfügbaren Modelle für das Dropdown
+AVAILABLE_MODELS = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "o1-preview", "o1-mini"]
 
 # --- Sidebar ---
 with st.sidebar:
@@ -44,9 +49,10 @@ if uploaded_file and not st.session_state.raw_text:
 
 if st.session_state.raw_text:
     if st.session_state.current_step == 0:
+        model_step1 = st.selectbox("Modell für Strukturanalyse wählen:", AVAILABLE_MODELS, index=0, key="model_step1")
         if st.button("Weiter zu Schritt 1: Strukturanalyse starten"):
             with st.spinner("Analysiere Struktur..."):
-                res = logic.analyze_structure_step1(client, st.session_state.raw_text)
+                res = logic.analyze_structure_step1(client, st.session_state.raw_text, model_name=model_step1)
                 st.session_state.analysis_res = res
                 st.session_state.current_step = 1
                 st.rerun()
@@ -99,6 +105,7 @@ if st.session_state.current_step >= 1:
 
     if st.session_state.current_step == 1:
         # Button prüft, ob Auswahl getroffen wurde
+        model_step2 = st.selectbox("Modell für Extraktion wählen:", AVAILABLE_MODELS, index=0, key="model_step2")
         if st.button("Weiter zu Schritt 2: Extraktion mit Auswahl"):
             if not selected_stats:
                 st.error("Bitte mindestens eine Quelle für Statuscodes wählen.")
@@ -109,7 +116,8 @@ if st.session_state.current_step >= 1:
                         client, 
                         st.session_state.raw_text, 
                         selected_stats, 
-                        selected_reas
+                        selected_reas,
+                        model_name=model_step2
                     )
                     st.session_state.extraction_res = ext_res
                     st.session_state.current_step = 2
@@ -171,6 +179,8 @@ if st.session_state.current_step >= 3:
             example_prompt = "Hänge Reasoncode an Statuscode an. Wenn Reason leer ist, nimm '00', sonst Reason."
             user_instruction = st.text_input("Anweisung:", placeholder=example_prompt)
             
+            model_step3_trans = st.selectbox("Modell für Transformation wählen:", AVAILABLE_MODELS, index=0, key="model_step3_trans")
+            
             if st.button("✨ Ausführen"):
                 if user_instruction:
                     with st.spinner("KI generiert Pandas-Code und wendet ihn an..."):
@@ -181,7 +191,8 @@ if st.session_state.current_step >= 3:
                         new_df = logic.apply_ai_transformation(
                             client, 
                             st.session_state.df_merged, 
-                            user_instruction
+                            user_instruction,
+                            model_name=model_step3_trans
                         )
                         
                         # Ergebnis prüfen
@@ -213,9 +224,10 @@ if st.session_state.current_step >= 3:
 
         with col_next:
             if st.session_state.current_step == 3:
+                model_step4 = st.selectbox("Modell für Mapping wählen:", AVAILABLE_MODELS, index=0, key="model_step4")
                 if st.button("Weiter zu Schritt 4: KI Mapping starten", type="primary"):
                     with st.spinner("Mappe Codes (Embedding + LLM)..."):
-                        df_fin = logic.run_mapping_step4(client, st.session_state.df_merged)
+                        df_fin = logic.run_mapping_step4(client, st.session_state.df_merged, model_name=model_step4)
                         st.session_state.df_final = df_fin
                         st.session_state.current_step = 4
                         st.rerun()
