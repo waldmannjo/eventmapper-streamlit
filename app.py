@@ -56,30 +56,64 @@ if st.session_state.raw_text:
 # =========================================================
 if st.session_state.current_step >= 1:
     st.divider()
-    st.header("Schritt 1: Ergebnis der Strukturanalyse")
-    st.json(st.session_state.analysis_res, expanded=False)
+    st.header("Schritt 1: Quellen-Auswahl")
     
-    # Werte für Vorschlag extrahieren
-    status_data = st.session_state.analysis_res.get("Statuscode", {})
-    reason_data = st.session_state.analysis_res.get("Reasoncode", {})
+    res = st.session_state.analysis_res
     
-    def_stat = status_data.get("Bezeichnung_im_Dokument", "Status") if isinstance(status_data, dict) else "Status"
-    def_reas = reason_data.get("Bezeichnung_im_Dokument", "Reason") if isinstance(reason_data, dict) else "Reason"
+    # 1. Kandidaten aus JSON holen
+    stat_candidates = res.get("status_candidates", [])
+    reas_candidates = res.get("reason_candidates", [])
+    
+    # Fallback für alte Struktur (falls JSON mal anders aussieht)
+    if not stat_candidates and "Statuscode" in res:
+        stat_candidates = [{"name": res["Statuscode"].get("Bezeichnung_im_Dokument", "Standard"), "description": "Automatisch erkannt"}]
 
-    st.subheader("Konfiguration für Extraktion")
     col1, col2 = st.columns(2)
+    
+    # 2. UI für Statuscodes (Multiselect)
     with col1:
-        st_term = st.text_input("Suchbegriff Statuscode", value=def_stat, key="term_stat")
+        st.subheader("Statuscode Quellen")
+        if stat_candidates:
+            # Erstelle Liste von Namen für das UI
+            stat_options = [c["name"] for c in stat_candidates]
+            # Standardmäßig alle auswählen
+            selected_stats = st.multiselect(
+                "Welche Tabellen nutzen?", 
+                options=stat_options, 
+                default=stat_options,
+                help="Wählen Sie hier, ob Sie Tabelle 8, Tabelle 9 oder beide nutzen wollen."
+            )
+        else:
+            st.warning("Keine Status-Tabellen gefunden.")
+            selected_stats = []
+
+    # 3. UI für Reasoncodes
     with col2:
-        re_term = st.text_input("Suchbegriff Reasoncode", value=def_reas, key="term_reas")
+        st.subheader("Reasoncode Quellen")
+        if reas_candidates:
+            reas_options = [c["name"] for c in reas_candidates]
+            selected_reas = st.multiselect("Welche Tabellen nutzen?", options=reas_options, default=reas_options)
+        else:
+            st.info("Keine Reason-Codes gefunden.")
+            selected_reas = []
 
     if st.session_state.current_step == 1:
-        if st.button("Weiter zu Schritt 2: Daten extrahieren"):
-            with st.spinner("Extrahiere Daten..."):
-                ext_res = logic.extract_data_step2(client, st.session_state.raw_text, st_term, re_term)
-                st.session_state.extraction_res = ext_res
-                st.session_state.current_step = 2
-                st.rerun()
+        # Button prüft, ob Auswahl getroffen wurde
+        if st.button("Weiter zu Schritt 2: Extraktion mit Auswahl"):
+            if not selected_stats:
+                st.error("Bitte mindestens eine Quelle für Statuscodes wählen.")
+            else:
+                with st.spinner(f"Extrahiere Daten aus {len(selected_stats)} Quellen..."):
+                    # Wir übergeben jetzt die Listen an Step 2
+                    ext_res = logic.extract_data_step2(
+                        client, 
+                        st.session_state.raw_text, 
+                        selected_stats, 
+                        selected_reas
+                    )
+                    st.session_state.extraction_res = ext_res
+                    st.session_state.current_step = 2
+                    st.rerun()
 
 # =========================================================
 # SCHRITT 2: EXTRAKTION ZWISCHENERGEBNIS
@@ -127,13 +161,27 @@ if st.session_state.current_step >= 3:
         st.write(f"Anzahl Zeilen: {len(st.session_state.df_merged)}")
         st.dataframe(st.session_state.df_merged.head(), width="stretch")
         
-        if st.session_state.current_step == 3:
-            if st.button("Weiter zu Schritt 4: KI Mapping starten"):
-                with st.spinner("Mappe Codes (Embedding + LLM)..."):
-                    df_fin = logic.run_mapping_step4(client, st.session_state.df_merged)
-                    st.session_state.df_final = df_fin
-                    st.session_state.current_step = 4
-                    st.rerun()
+        # --- NEU: Download Button für Merge-Datei ---
+        csv_merged = st.session_state.df_merged.to_csv(index=False, sep=";").encode('utf-8')
+        
+        col_dl, col_next = st.columns([1, 2])
+        
+        with col_dl:
+            st.download_button(
+                label="💾 Merge-Daten herunterladen",
+                data=csv_merged,
+                file_name="merged_codes_step3.csv",
+                mime="text/csv"
+            )
+
+        with col_next:
+            if st.session_state.current_step == 3:
+                if st.button("Weiter zu Schritt 4: KI Mapping starten", type="primary"):
+                    with st.spinner("Mappe Codes (Embedding + LLM)..."):
+                        df_fin = logic.run_mapping_step4(client, st.session_state.df_merged)
+                        st.session_state.df_final = df_fin
+                        st.session_state.current_step = 4
+                        st.rerun()
 
 # =========================================================
 # SCHRITT 4: FINALERGEBNIS
