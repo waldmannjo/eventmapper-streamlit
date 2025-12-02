@@ -2,7 +2,7 @@
 # Analyse des Dokuments auf Statuscodes und Reason Codes.
 
 # Konfiguration
-LLM_MODEL = "gpt-4o"  # Stärkeres Modell für Analyse empfohlen
+LLM_MODEL = "gpt-4.1-2025-04-14" # "gpt-4o"  # Stärkeres Modell für Analyse empfohlen
 
 import json
 

@@ -153,13 +153,50 @@ if st.session_state.current_step >= 2:
 # =========================================================
 if st.session_state.current_step >= 3:
     st.divider()
-    st.header("Schritt 3: Merge Ergebnis")
+    st.header("Schritt 3: Datenaufbereitung")
     
     if st.session_state.df_merged.empty:
-        st.error("Keine Daten nach Merge vorhanden. Bitte Prozess prüfen.")
+        st.error("Keine Daten vorhanden.")
     else:
-        st.write(f"Anzahl Zeilen: {len(st.session_state.df_merged)}")
-        st.dataframe(st.session_state.df_merged.head(), width="stretch")
+        # --- A. ANZEIGE ---
+        st.subheader("Aktuelle Daten")
+        st.dataframe(st.session_state.df_merged.head(), use_container_width=True)
+        st.caption(f"Gesamtzeilen: {len(st.session_state.df_merged)}")
+
+        # --- B. KI TRANSFORMATION (NEU) ---
+        with st.expander("🛠️ Daten transformieren (KI-Assistent)", expanded=False):
+            st.info("Beschreiben Sie, wie die Spalten geändert werden sollen.")
+            
+            # Beispiel-Vorschläge für den User
+            example_prompt = "Hänge Reasoncode an Statuscode an. Wenn Reason leer ist, nimm '00', sonst Reason."
+            user_instruction = st.text_input("Anweisung:", placeholder=example_prompt)
+            
+            if st.button("✨ Ausführen"):
+                if user_instruction:
+                    with st.spinner("KI generiert Pandas-Code und wendet ihn an..."):
+                        # Alten State sichern (Undo-Funktion light)
+                        st.session_state.df_merged_backup = st.session_state.df_merged.copy()
+                        
+                        # Transformation aufrufen
+                        new_df = logic.apply_ai_transformation(
+                            client, 
+                            st.session_state.df_merged, 
+                            user_instruction
+                        )
+                        
+                        # Ergebnis prüfen
+                        if new_df.equals(st.session_state.df_merged):
+                            st.warning("Die KI hat keine Änderung vorgenommen (Code evtl. fehlerhaft oder Bedingung nicht erfüllt).")
+                        else:
+                            st.session_state.df_merged = new_df
+                            st.success("Transformation angewendet!")
+                            st.rerun()
+
+            if st.button("↩️ Letzte Änderung rückgängig machen"):
+                if "df_merged_backup" in st.session_state:
+                    st.session_state.df_merged = st.session_state.df_merged_backup
+                    st.success("Rückgängig gemacht.")
+                    st.rerun()
         
         # --- NEU: Download Button für Merge-Datei ---
         csv_merged = st.session_state.df_merged.to_csv(index=False, sep=";").encode('utf-8')

@@ -2,6 +2,7 @@
 # Merge der extrahierten Daten.
 
 import pandas as pd
+import numpy as np
 from .extractor import preview_csv_string
 
 def merge_data_step3(extraction_result):
@@ -90,3 +91,62 @@ def merge_data_step3(extraction_result):
             return df_status[["Statuscode", "Reasoncode", "Beschreibung"]]
             
     return pd.DataFrame()
+
+def apply_ai_transformation(client, df: pd.DataFrame, instruction: str) -> pd.DataFrame:
+    """
+    Passt den DataFrame basierend auf einer Nutzeranweisung per LLM an.
+    """
+    # Wir geben der KI Infos über die Spalten und Datentypen
+    col_info = df.dtypes.to_string()
+    sample_data = df.head(3).to_string()
+
+    system_prompt = "Du bist ein Python Pandas Experte. Antworte NUR mit ausführbarem Python-Code. Kein Markdown, keine Erklärungen."
+    
+    user_prompt = f"""
+    Gegeben ist ein Pandas DataFrame `df`.
+    
+    Spalten und Typen:
+    {col_info}
+    
+    Beispieldaten:
+    {sample_data}
+    
+    AUFGABE:
+    Manipuliere `df` basierend auf dieser Anweisung: "{instruction}"
+    
+    REGELN:
+    1. Der Code muss direkt auf der Variable `df` arbeiten.
+    2. Du darfst Spalten überschreiben oder neue hinzufügen.
+    3. Beachte Datentypen (konvertiere zu str, falls nötig).
+    4. Gib NUR den Python-Code zurück, keine ``` Blöcke.
+    5. Gehe davon aus, dass `df` bereits importiert ist.
+    
+    Beispiel-Input: "Füge Spalte 'A' und 'B' zusammen"
+    Beispiel-Output: df['A'] = df['A'].astype(str) + df['B'].astype(str)
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o", # Ein starkes Modell ist hier wichtig für korrekten Code
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0
+        )
+        
+        code = response.choices[0].message.content.strip()
+        
+        # Entferne Markdown Code-Blöcke falls die KI sie doch macht
+        code = code.replace("```python", "").replace("```", "").strip()
+        
+        # --- ACHTUNG: EXEC IST POTENZIELL GEFÄHRLICH ---
+        # In einer lokalen App/Prototyp okay. In Produktion Sandbox verwenden!
+        local_vars = {"df": df.copy(), "pd": pd, "np": np}
+        exec(code, {}, local_vars)
+        
+        return local_vars["df"]
+        
+    except Exception as e:
+        print(f"Fehler bei Transformation: {e}")
+        return df # Original zurückgeben bei Fehler
