@@ -126,16 +126,18 @@ def apply_ai_transformation(client, df: pd.DataFrame, instruction: str, model_na
     """
 
     try:
-        response = client.chat.completions.create(
-            model=model_name, # Ein starkes Modell ist hier wichtig für korrekten Code
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0
+        response = client.responses.create(
+        model=model_name,  # z.B. "gpt-5.1-2025-11-13"
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        # Optional bei GPT-5.*:
+        # reasoning={"effort": "none"},  # "none" | "low" | "medium" | "high"
         )
-        
-        code = response.choices[0].message.content.strip()
+
+        # Text aus der Responses API extrahieren
+        code = (response.output_text or "").strip()
         
         # Entferne Markdown Code-Blöcke falls die KI sie doch macht
         code = code.replace("```python", "").replace("```", "").strip()
