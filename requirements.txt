@@ -6,3 +6,4 @@ scikit-learn
 numpy
 openpyxl
 pyarrow>=22.0.0
+sentence-transformers

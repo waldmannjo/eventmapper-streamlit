@@ -1,17 +1,20 @@
 Statuscode;Reasoncode;Beschreibung
-CBK;;Customer Booking
-PUP;;Pickup
-BKD;;Booked (with Carrier)
-REW;;Received at Export Warehouse
-DEP;;Departed
-ARR/NFD;;Arrived / Consignee or Agent informed of Arrival
-CCD/DRB;;Customs Cleared / Documents released to Broker
-POD;;Proof of Delivery
-POR;;Arrived (at port)
-ARR;;Arrived (IOD)
-1;;Cargo Reveived Status
-2;;Broker Notified
-15;;Consolidated / Booked (ETD/ETA)
-24;;Departed (ATD)
-21;;Delivered
-40;;Goods/consignments at port
+1;2;(De)Konsolidierung - Verladefehler
+1;3;(De)Konsolidierung - Routerfehler
+1;4;(De)Konsolidierung - beschädigt
+1;6;(De)Konsolidierung - Mitnahme
+1;7;(De)Konsolidierung - Postleitzahlfehler
+1;9;(De)Konsolidierung - nicht automatisch förderbar
+1;11;(De)Konsolidierung - Adresse falsch
+1;12;(De)Konsolidierung - Annahme verweigert, beschädigt
+1;14;(De)Konsolidierung - Annahme verweigert, nicht bestellt
+1;15;(De)Konsolidierung - Annahme verweigert
+1;16;(De)Konsolidierung - Annahme verw. nach Inhaltsprüfung wegen Beschädigung
+1;17;(De)Konsolidierung - Retoure (Abholung) nach Falschzustellung
+1;18;(De)Konsolidierung - Austausch / Auftrag
+1;19;(De)Konsolidierung - nicht angetroffen, einmal benachrichtigt
+1;20;(De)Konsolidierung - Selbstabholer
+1;21;(De)Konsolidierung - Vernichtung / Konfiszierung durch den Zoll
+1;22;(De)Konsolidierung - Bruch im Gewahrsam des Systempartners
+1;24;(De)Konsolidierung - Inhaltsprüfung
+1;25;(De)Konsolidierung - keine Warenannahme
