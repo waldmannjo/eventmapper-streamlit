@@ -221,7 +221,7 @@ if st.session_state.current_step >= 3:
     else:
         # --- A. ANZEIGE ---
         st.subheader("Aktuelle Daten")
-        st.dataframe(st.session_state.df_merged.head(), use_container_width=True)
+        st.dataframe(st.session_state.df_merged.head(), width='stretch')
         st.caption(f"Gesamtzeilen: {len(st.session_state.df_merged)}")
 
         # --- B. KI TRANSFORMATION (NEU) ---
@@ -299,16 +299,23 @@ if st.session_state.current_step >= 3:
                 )
                 
                 if st.button("Weiter zu Schritt 4: KI Mapping starten", type="primary"):
-                    with st.spinner("Mappe Codes (Embedding + LLM)..."):
-                        df_fin = logic.run_mapping_step4(
-                            client, 
-                            st.session_state.df_merged, 
-                            model_name=model_step4,
-                            threshold=threshold
-                        )
-                        st.session_state.df_final = df_fin
-                        st.session_state.current_step = 4
-                        st.rerun()
+                    prog_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    def update_progress(p, text):
+                        prog_bar.progress(p)
+                        status_text.text(text)
+
+                    df_fin = logic.run_mapping_step4(
+                        client, 
+                        st.session_state.df_merged, 
+                        model_name=model_step4,
+                        threshold=threshold,
+                        progress_callback=update_progress
+                    )
+                    st.session_state.df_final = df_fin
+                    st.session_state.current_step = 4
+                    st.rerun()
 
 # =========================================================
 # SCHRITT 4: FINALERGEBNIS

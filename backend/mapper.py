@@ -2,7 +2,9 @@
 # Mapping der extrahierten Daten auf Standard-Codes.
 
 import numpy as np
+import pandas as pd
 import json
+import os
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import CrossEncoder
 import streamlit as st # Für Caching des Modells
@@ -10,23 +12,108 @@ import streamlit as st # Für Caching des Modells
 from codes import CODES  # Importiert codes.py aus dem Hauptverzeichnis
 
 # Konfiguration
-EMB_MODEL = "text-embedding-3-large"
+EMB_MODEL = "text-embedding-3-large" # Konsistent bleiben
 # LOW_CONF_THRESHOLD = 0.60
 CROSS_ENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+HISTORY_FILE = "examples/CES_Umschlüsselungseinträge_all.xlsx"
 
 @st.cache_resource
 def load_cross_encoder():
     return CrossEncoder(CROSS_ENCODER_MODEL_NAME)
 
-def embed_texts(client, texts):
-    resp = client.embeddings.create(model=EMB_MODEL, input=texts)
-    return np.array([e.embedding for e in resp.data])
+def embed_texts(client, texts, batch_size=500):
+    """Erzeugt Embeddings für eine Liste von Texten in Batches."""
+    if not texts:
+        return np.array([])
+    
+    all_embeddings = []
+    total = len(texts)
+    
+    for i in range(0, total, batch_size):
+        batch = texts[i : i + batch_size]
+        try:
+            # API call
+            resp = client.embeddings.create(model=EMB_MODEL, input=batch)
+            
+            # Extract embeddings (preserve order)
+            # resp.data is a list of embedding objects
+            batch_embeddings = [e.embedding for e in resp.data]
+            all_embeddings.extend(batch_embeddings)
+            
+        except Exception as e:
+            print(f"Embedding Error in batch {i}-{i+len(batch)}: {e}")
+            # Wir werfen den Fehler weiter, da unvollständige Embeddings das Mapping zerschießen
+            raise e
+            
+    return np.array(all_embeddings)
 
-def run_mapping_step4(client, df, model_name, threshold: float = 0.60):
+@st.cache_resource
+def load_history_examples(_client):
+    """Lädt historische Mappings und berechnet deren Embeddings einmalig."""
+    if not os.path.exists(HISTORY_FILE):
+        return None, None
+    
+    try:
+        df_hist = pd.read_excel(HISTORY_FILE)
+        # Benötigte Spalten prüfen
+        req_cols = ['Description', 'AEB Event Code']
+        if not all(c in df_hist.columns for c in req_cols):
+            return None, None
+            
+        # Bereinigen
+        df_hist = df_hist.dropna(subset=['Description', 'AEB Event Code'])
+        
+        if df_hist.empty:
+             return None, None
+
+        # Embeddings bauen
+        # Wir nehmen 'Description' als Basis für die Ähnlichkeit
+        hist_texts = df_hist['Description'].astype(str).tolist()
+        
+        # Batch-Embedding nutzen
+        hist_vecs = embed_texts(_client, hist_texts, batch_size=500)
+        
+        return df_hist, hist_vecs
+    except Exception as e:
+        print(f"History Loading Error: {e}")
+        return None, None
+
+def get_few_shot_examples(query_vec, df_hist, hist_vecs, top_k=3):
+    """Findet die ähnlichsten historischen Beispiele für einen Query-Vektor."""
+    if df_hist is None or hist_vecs is None or len(hist_vecs) == 0:
+        return []
+    
+    # Cosine Similarity berechnen
+    # query_vec ist (dim,), hist_vecs ist (N, dim)
+    # reshape query_vec zu (1, dim)
+    sims = cosine_similarity(query_vec.reshape(1, -1), hist_vecs).ravel()
+    
+    # Top K Indizes
+    # Wir wollen die höchsten Ähnlichkeiten
+    top_indices = np.argsort(sims)[-top_k:][::-1]
+    
+    examples = []
+    for idx in top_indices:
+        # Wir nehmen nur Beispiele, die auch eine gewisse Ähnlichkeit haben (z.B. > 0.5)
+        if sims[idx] < 0.5:
+            continue
+            
+        row = df_hist.iloc[idx]
+        examples.append({
+            "input": row['Description'],
+            "mapped_code": row['AEB Event Code']
+        })
+        
+    return examples
+
+def run_mapping_step4(client, df, model_name, threshold: float = 0.60, progress_callback=None):
     if df.empty: return df
     
-    # Cross-Encoder laden (wird gecacht)
+    if progress_callback: progress_callback(0.05, "Lade Ressourcen & Embeddings...")
+
+    # Ressourcen laden
     ce_model = load_cross_encoder()
+    df_hist, hist_vecs = load_history_examples(client)
 
     # Textspalte finden
     if "Beschreibung" not in df.columns:
@@ -39,7 +126,7 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60):
 
     # 2. Embed Input (Enhanced Context)
     input_texts = []
-    raw_input_texts_for_ce = [] # Texte ohne Präfix für Cross-Encoder (oder mit, je nach Modell-Präferenz, aber meist roh besser lesbar)
+    raw_input_texts_for_ce = [] # Texte ohne Präfix für Cross-Encoder
     
     for _, row in df.iterrows():
         parts = []
@@ -62,48 +149,42 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60):
     top_candidates_list = [] # Speichert die Top-Kandidaten für den LLM Fallback
     
     # 3. Match (Bi-Encoder Vorfilterung + Cross-Encoder Re-Ranking)
+    total_items = len(q_vecs)
     for i, v in enumerate(q_vecs):
+        if progress_callback:
+            # Phase 1: 10% bis 60%
+            prog = 0.1 + (0.5 * (i / total_items))
+            progress_callback(prog, f"Mapping Zeile {i+1}/{total_items} (Embedding + Cross-Encoder)")
+
         # A. Bi-Encoder: Cosine Similarity
         sims = cosine_similarity(v.reshape(1,-1), code_vecs).ravel()
         
         # Hole mehr Kandidaten für das Re-Ranking (z.B. Top 10 statt 3)
-        # Wir wollen sichergehen, dass der "wahre" Match dabei ist
         top_k_prefilter = 10 
         top_k_idx = np.argsort(sims)[-top_k_prefilter:][::-1]
         
         # B. Cross-Encoder: Re-Ranking
-        # Erstelle Paare: (Input-Text, Code-Beschreibung)
-        # Wir nutzen hier eine Kombination aus Titel und Beschreibung für den Code
         ce_pairs = []
         for idx in top_k_idx:
             code_desc = f"{CODES[idx][1]}. {CODES[idx][2]}"
             ce_pairs.append([raw_input_texts_for_ce[i], code_desc])
             
-        # Vorhersage (liefert Logits oder Scores, meist unbegrenzt, aber vergleichbar)
         ce_scores = ce_model.predict(ce_pairs)
         
-        # Sortiere die top_k Indizes basierend auf den Cross-Encoder Scores neu
-        # ce_scores ist parallel zu top_k_idx
         sorted_indices_in_top_k = np.argsort(ce_scores)[::-1] # Höchster Score zuerst
         
-        # Die neuen Top-Indizes (gemappt zurück auf CODES)
         reranked_indices = [top_k_idx[j] for j in sorted_indices_in_top_k]
         reranked_scores = [ce_scores[j] for j in sorted_indices_in_top_k]
         
-        # Bester Match nach Re-Ranking
         best_idx = reranked_indices[0]
         best_score = reranked_scores[0]
         
-        # Sigmoid-ähnliche Normalisierung für Confidence (optional, da CE Scores logits sein können)
-        # MS-Marco liefert oft Werte zwischen -10 und 10. Wir nutzen eine einfache Sigmoid für 0-1
-        def sigmoid(x):
-             return 1 / (1 + np.exp(-x))
-        
+        def sigmoid(x): return 1 / (1 + np.exp(-x))
         conf = sigmoid(best_score)
         
         pred_codes.append(CODES[best_idx][0])
         conf_scores.append(conf)
-        sources.append("emb+ce") # Markierung als Embedding + Cross-Encoder
+        sources.append("emb+ce") 
         
         # Kandidaten für LLM speichern (Top 3 nach Re-Ranking)
         candidates = []
@@ -122,18 +203,41 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60):
     
     # 4. LLM Fallback
     unsure_mask = df["confidence"] < threshold
-    if unsure_mask.any():
-        # Wir geben dem LLM nur die Top-Kandidaten + eine Option "Other"
-        # Das spart Tokens und fokussiert das Modell.
+    unsure_indices = df[unsure_mask].index
+    total_unsure = len(unsure_indices)
+
+    if total_unsure > 0:
+        # Wir geben dem LLM nur die Top-Kandidaten + FEW-SHOT EXAMPLES
         
-        for idx in df[unsure_mask].index:
+        for i, idx in enumerate(unsure_indices):
+            if progress_callback:
+                # Phase 2: 60% bis 100%
+                prog = 0.6 + (0.4 * (i / total_unsure))
+                progress_callback(prog, f"LLM Verfeinerung Zeile {i+1}/{total_unsure}")
+
             row_text = df.at[idx, 'Beschreibung']
-            candidates = top_candidates_list[idx] # Liste von Dicts
+            candidates = top_candidates_list[idx]
+            
+            # Hole Few-Shot Examples (passend zum aktuellen Vektor)
+            # Wir nutzen hier q_vecs[i]. 'idx' ist der DataFrame Index. Wir müssen den korrekten Vektor finden.
+            # Da q_vecs parallel zu df erstellt wurde, ist q_vecs[i] nicht unbedingt q_vecs[idx] wenn der Index nicht 0..N ist.
+            # ABER: df.iterrows() oben hat linear iteriert und q_vecs gefüllt. 
+            # Wir brauchen den INTEGER Index (Position), nicht das Label.
+            # df.index.get_loc(idx) gibt uns die Position.
+            pos_idx = df.index.get_loc(idx)
+            current_vec = q_vecs[pos_idx]
+            
+            hist_examples = get_few_shot_examples(current_vec, df_hist, hist_vecs)
+            
+            hist_str = ""
+            if hist_examples:
+                hist_lines = [f"- Input '{ex['input']}' wurde gemappt auf '{ex['mapped_code']}'" for ex in hist_examples]
+                hist_str = "\nHistorische Beispiele (zur Orientierung):\n" + "\n".join(hist_lines)
             
             # Kandidaten-String bauen
             cand_str = "\n".join([f"- {c['code']} ({c['desc']})" for c in candidates])
             
-            system_prompt = "Du bist ein Mapping-Experte. Wähle den passendsten Code aus den Vorschlägen oder entscheide dich für einen anderen, wenn keiner passt."
+            system_prompt = "Du bist ein Mapping-Experte. Wähle den passendsten Code aus den Vorschlägen. Nutze die historischen Beispiele als Orientierung für den Stil der Zuordnung."
             
             user_prompt = f"""
             Mappe diesen Input auf einen Standard-Code.
@@ -142,6 +246,7 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60):
             
             Vorschläge (basierend auf Ähnlichkeit):
             {cand_str}
+            {hist_str}
             
             Antworte im JSON-Format: {{ "code": "CODE", "reasoning": "Kurze Begründung" }}
             """
@@ -165,5 +270,6 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60):
             except Exception as e:
                 print(f"LLM Error: {e}")
                 pass
-
+    
+    if progress_callback: progress_callback(1.0, "Fertig!")
     return df
