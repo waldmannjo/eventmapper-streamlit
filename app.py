@@ -9,9 +9,9 @@ st.title("Eventmapper")
 # --- KONFIGURATION ---
 # Konfiguration der verfügbaren Modelle mit Beschreibung und Kosten
 MODEL_CONFIG = {
-    "gpt-5.1-2025-11-13": {"desc": "The best model for coding and agentic tasks with configurable reasoning effort.", "cost": "Input: $1.25, Output: $10"},
-    "gpt-5-mini-2025-08-07": {"desc": "A faster, cost-efficient version of GPT-5 for well-defined tasks", "cost": "Input: $0.25, Output: $2"},
     "gpt-5-nano-2025-08-07": {"desc": "Fastest, most cost-efficient version of GPT-5", "cost": "Input: $0.05, Output: $0.4"},
+    "gpt-5-mini-2025-08-07": {"desc": "A faster, cost-efficient version of GPT-5 for well-defined tasks", "cost": "Input: $0.25, Output: $2"},
+    "gpt-5.1-2025-11-13": {"desc": "The best model for coding and agentic tasks with configurable reasoning effort.", "cost": "Input: $1.25, Output: $10"},
     "gpt-4.1-2025-04-14": {"desc": "Smartest non-reasoning model", "cost": "Input: $2, Output: $8"}
 }
 
@@ -33,6 +33,25 @@ with st.sidebar:
     if st.button("🔄 Prozess zurücksetzen", help="Löscht alle gespeicherten Daten und setzt den Workflow auf Schritt 0 zurück."):
         st.session_state.clear()
         st.rerun()
+
+    # --- DEBUG / TEST MODE ---
+    with st.sidebar:
+        st.markdown("---")
+        with st.expander("🛠️ Test: Mapping direkt"):
+            st.caption("Lade eine CSV/Excel Datei hoch, um direkt zu Schritt 3 (Pre-Mapping) zu springen.")
+            debug_file = st.file_uploader("Datei laden", type=["csv", "xlsx"], key="debug_upl")
+            if debug_file and st.button("🚀 Direkt laden"):
+                try:
+                    if debug_file.name.endswith(".csv"):
+                        df_d = pd.read_csv(debug_file, sep=None, engine="python")
+                    else:
+                        df_d = pd.read_excel(debug_file)
+                    st.session_state.df_merged = df_d
+                    st.session_state.current_step = 3
+                    if not st.session_state.raw_text: st.session_state.raw_text = "DEBUG"
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Fehler: {e}")
 
 # --- State Initialisierung ---
 if "current_step" not in st.session_state:
@@ -76,7 +95,7 @@ if st.session_state.raw_text:
 # =========================================================
 # SCHRITT 1: ANALYSE ERGEBNIS
 # =========================================================
-if st.session_state.current_step >= 1:
+if st.session_state.current_step >= 1 and st.session_state.analysis_res:
     st.divider()
     st.header("Schritt 1: Quellen-Auswahl")
     
@@ -154,7 +173,7 @@ if st.session_state.current_step >= 1:
 # =========================================================
 # SCHRITT 2: EXTRAKTION ZWISCHENERGEBNIS
 # =========================================================
-if st.session_state.current_step >= 2:
+if st.session_state.current_step >= 2 and st.session_state.extraction_res:
     st.divider()
     st.header("Schritt 2: Extrahierte Rohdaten")
     
@@ -264,6 +283,7 @@ if st.session_state.current_step >= 3:
 
         with col_next:
             if st.session_state.current_step == 3:
+                st.markdown("#### Mapping Konfiguration")
                 model_step4 = st.selectbox(
                     "Modell für Mapping wählen:", 
                     options=MODEL_CONFIG.keys(), 
@@ -271,9 +291,21 @@ if st.session_state.current_step >= 3:
                     index=0, 
                     key="model_step4"
                 )
+                
+                threshold = st.slider(
+                    "LLM-Schwelle (Confidence Threshold)", 
+                    min_value=0.0, max_value=1.0, value=0.6, step=0.05,
+                    help="Werte unter dieser Schwelle werden vom LLM geprüft. Höher = mehr LLM-Aufrufe (teurer, genauer)."
+                )
+                
                 if st.button("Weiter zu Schritt 4: KI Mapping starten", type="primary"):
                     with st.spinner("Mappe Codes (Embedding + LLM)..."):
-                        df_fin = logic.run_mapping_step4(client, st.session_state.df_merged, model_name=model_step4)
+                        df_fin = logic.run_mapping_step4(
+                            client, 
+                            st.session_state.df_merged, 
+                            model_name=model_step4,
+                            threshold=threshold
+                        )
                         st.session_state.df_final = df_fin
                         st.session_state.current_step = 4
                         st.rerun()

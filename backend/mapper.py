@@ -7,15 +7,14 @@ from sklearn.metrics.pairwise import cosine_similarity
 from codes import CODES  # Importiert codes.py aus dem Hauptverzeichnis
 
 # Konfiguration
-# LLM_MODEL = "gpt-4o-mini"   # Stärkeres Modell für Analyse empfohlen    
 EMB_MODEL = "text-embedding-3-small"
-LOW_CONF_THRESHOLD = 0.60
+# LOW_CONF_THRESHOLD = 0.60
 
 def embed_texts(client, texts):
     resp = client.embeddings.create(model=EMB_MODEL, input=texts)
     return np.array([e.embedding for e in resp.data])
 
-def run_mapping_step4(client, df, model_name: str = "gpt-4o-mini"):
+def run_mapping_step4(client, df, model_name, threshold: float = 0.60):
     if df.empty: return df
     
     # Textspalte finden
@@ -26,44 +25,99 @@ def run_mapping_step4(client, df, model_name: str = "gpt-4o-mini"):
     code_texts = [f"{c[0]}: {c[1]}. {c[2]}" for c in CODES]
     code_vecs = embed_texts(client, code_texts)
 
-    # 2. Embed Input
-    input_texts = df["Beschreibung"].astype(str).tolist()
+    # 2. Embed Input (Enhanced Context)
+    # Wir bauen einen reichhaltigeren String für das Embedding
+    input_texts = []
+    for _, row in df.iterrows():
+        parts = []
+        if "Statuscode" in df.columns: parts.append(str(row["Statuscode"]))
+        if "Reasoncode" in df.columns: parts.append(str(row["Reasoncode"]))
+        parts.append(str(row["Beschreibung"]))
+        input_texts.append(" ".join(parts))
+
     q_vecs = embed_texts(client, input_texts)
     
     pred_codes = []
     conf_scores = []
     sources = []
+    top_candidates_list = [] # Speichert die Top-3 Kandidaten für den LLM Fallback
     
     # 3. Match
     for v in q_vecs:
         sims = cosine_similarity(v.reshape(1,-1), code_vecs).ravel()
-        top_idx = int(np.argmax(sims))
+        
+        # Top 3 Indizes holen
+        top_3_idx = np.argsort(sims)[-3:][::-1]
+        
+        top_idx = top_3_idx[0]
         top_val = sims[top_idx]
-        second = np.partition(sims, -2)[-2] if len(sims) > 1 else 0.0
-        conf = (top_val + (top_val - second)) / 2.0
+        second_val = sims[top_3_idx[1]] if len(sims) > 1 else 0.0
+        
+        # Confidence Berechnung
+        conf = (top_val + (top_val - second_val)) / 2.0
         
         pred_codes.append(CODES[top_idx][0])
         conf_scores.append(conf)
         sources.append("emb")
+        
+        # Kandidaten für LLM speichern (Code, ShortDesc, Score)
+        candidates = []
+        for idx in top_3_idx:
+            candidates.append({
+                "code": CODES[idx][0],
+                "desc": CODES[idx][1],
+                "score": float(sims[idx])
+            })
+        top_candidates_list.append(candidates)
 
     df["final_code"] = pred_codes
     df["confidence"] = conf_scores
     df["source"] = sources
     
     # 4. LLM Fallback
-    unsure_mask = df["confidence"] < LOW_CONF_THRESHOLD
+    unsure_mask = df["confidence"] < threshold
     if unsure_mask.any():
-        code_summary = "\n".join([f"{c[0]} ({c[1]})" for c in CODES])
+        # Wir geben dem LLM nur die Top-Kandidaten + eine Option "Other"
+        # Das spart Tokens und fokussiert das Modell.
+        
         for idx in df[unsure_mask].index:
+            row_text = df.at[idx, 'Beschreibung']
+            candidates = top_candidates_list[idx] # Liste von Dicts
+            
+            # Kandidaten-String bauen
+            cand_str = "\n".join([f"- {c['code']} ({c['desc']})" for c in candidates])
+            
+            system_prompt = "Du bist ein Mapping-Experte. Wähle den passendsten Code aus den Vorschlägen oder entscheide dich für einen anderen, wenn keiner passt."
+            
+            user_prompt = f"""
+            Mappe diesen Input auf einen Standard-Code.
+            
+            Input: "{row_text}"
+            
+            Vorschläge (basierend auf Ähnlichkeit):
+            {cand_str}
+            
+            Antworte im JSON-Format: {{ "code": "CODE", "reasoning": "Kurze Begründung" }}
+            """
+            
             try:
-                prompt = f"Mappe Text auf Code. JSON: {{'code': 'CODE'}}\nText: {df.at[idx, 'Beschreibung']}\nCodes:\n{code_summary}"
                 resp = client.chat.completions.create(
-                    model=model_name, messages=[{"role": "user", "content": prompt}],
+                    model=model_name, 
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
                     response_format={"type": "json_object"}
                 )
                 res = json.loads(resp.choices[0].message.content)
-                df.at[idx, "final_code"] = res.get("code")
-                df.at[idx, "source"] = "llm"
-            except: pass
+                
+                new_code = res.get("code")
+                # Validierung: Ist der Code gültig?
+                if any(c[0] == new_code for c in CODES):
+                    df.at[idx, "final_code"] = new_code
+                    df.at[idx, "source"] = "llm"
+            except Exception as e:
+                print(f"LLM Error: {e}")
+                pass
 
     return df

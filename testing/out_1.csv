@@ -1,0 +1,7 @@
+Statuscode;Reasoncode;Beschreibung
+1;;Cargo Reveived Status
+2;;Broker Notified
+15;;Consolidated / Booked (ETD/ETA)
+24;;Departed (ATD)
+21;;Delivered
+40;;Goods/consignments at port

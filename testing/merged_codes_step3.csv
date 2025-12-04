@@ -1,0 +1,17 @@
+Statuscode;Reasoncode;Beschreibung
+CBK;;Customer Booking
+PUP;;Pickup
+BKD;;Booked (with Carrier)
+REW;;Received at Export Warehouse
+DEP;;Departed
+ARR/NFD;;Arrived / Consignee or Agent informed of Arrival
+CCD/DRB;;Customs Cleared / Documents released to Broker
+POD;;Proof of Delivery
+POR;;Arrived (at port)
+ARR;;Arrived (IOD)
+1;;Cargo Reveived Status
+2;;Broker Notified
+15;;Consolidated / Booked (ETD/ETA)
+24;;Departed (ATD)
+21;;Delivered
+40;;Goods/consignments at port
