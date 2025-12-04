@@ -7,7 +7,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from codes import CODES  # Importiert codes.py aus dem Hauptverzeichnis
 
 # Konfiguration
-EMB_MODEL = "text-embedding-3-small"
+EMB_MODEL = "text-embedding-3-large"
 # LOW_CONF_THRESHOLD = 0.60
 
 def embed_texts(client, texts):
@@ -22,7 +22,7 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60):
         df["Beschreibung"] = df.iloc[:, -1]
 
     # 1. Embed Standard Codes
-    code_texts = [f"{c[0]}: {c[1]}. {c[2]}" for c in CODES]
+    code_texts = [f"Definition eines internen Sendungsstatus: {c[1]}. Details: {c[2]}" for c in CODES]
     code_vecs = embed_texts(client, code_texts)
 
     # 2. Embed Input (Enhanced Context)
@@ -33,7 +33,7 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60):
         if "Statuscode" in df.columns: parts.append(str(row["Statuscode"]))
         if "Reasoncode" in df.columns: parts.append(str(row["Reasoncode"]))
         parts.append(str(row["Beschreibung"]))
-        input_texts.append(" ".join(parts))
+        input_texts.append(f"Beschreibung eines Sendungsstatus vom Transportdienstleister: {' '.join(parts)}")
 
     q_vecs = embed_texts(client, input_texts)
     
