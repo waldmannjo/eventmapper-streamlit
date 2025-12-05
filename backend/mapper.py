@@ -78,30 +78,28 @@ def load_history_examples(_client):
         print(f"History Loading Error: {e}")
         return None, None
 
-def get_few_shot_examples(query_vec, df_hist, hist_vecs, top_k=3):
-    """Findet die ähnlichsten historischen Beispiele für einen Query-Vektor."""
+def get_similar_historical_entries(query_vec, df_hist, hist_vecs, top_k=3):
+    """
+    Findet die ähnlichsten historischen Beispiele für einen Query-Vektor.
+    Gibt eine Liste von Dicts zurück: [{'input': str, 'mapped_code': str, 'score': float}, ...]
+    """
     if df_hist is None or hist_vecs is None or len(hist_vecs) == 0:
         return []
     
     # Cosine Similarity berechnen
     # query_vec ist (dim,), hist_vecs ist (N, dim)
-    # reshape query_vec zu (1, dim)
     sims = cosine_similarity(query_vec.reshape(1, -1), hist_vecs).ravel()
     
     # Top K Indizes
-    # Wir wollen die höchsten Ähnlichkeiten
     top_indices = np.argsort(sims)[-top_k:][::-1]
     
     examples = []
     for idx in top_indices:
-        # Wir nehmen nur Beispiele, die auch eine gewisse Ähnlichkeit haben (z.B. > 0.5)
-        if sims[idx] < 0.5:
-            continue
-            
         row = df_hist.iloc[idx]
         examples.append({
             "input": row['Description'],
-            "mapped_code": row['AEB Event Code']
+            "mapped_code": row['AEB Event Code'],
+            "score": sims[idx]
         })
         
     return examples
@@ -148,22 +146,43 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60, progress_
     sources = []
     top_candidates_list = [] # Speichert die Top-Kandidaten für den LLM Fallback
     
-    # 3. Match (Bi-Encoder Vorfilterung + Cross-Encoder Re-Ranking)
+    # KNN THRESHOLD for direct match
+    KNN_DIRECT_MATCH_THRESHOLD = 0.93
+
+    # 3. Match (Priority: k-NN -> Bi-Encoder -> Cross-Encoder)
     total_items = len(q_vecs)
     for i, v in enumerate(q_vecs):
         if progress_callback:
-            # Phase 1: 10% bis 60%
             prog = 0.1 + (0.5 * (i / total_items))
-            progress_callback(prog, f"Mapping Zeile {i+1}/{total_items} (Embedding + Cross-Encoder)")
+            progress_callback(prog, f"Mapping Zeile {i+1}/{total_items}")
+        
+        # --- A. k-NN Check (History) ---
+        knn_match_found = False
+        if df_hist is not None and hist_vecs is not None:
+            # Suche nur den Top-1 Nachbarn für direkten Match
+            hist_matches = get_similar_historical_entries(v, df_hist, hist_vecs, top_k=1)
+            if hist_matches:
+                best_hist = hist_matches[0]
+                if best_hist['score'] >= KNN_DIRECT_MATCH_THRESHOLD:
+                    pred_codes.append(best_hist['mapped_code'])
+                    conf_scores.append(float(best_hist['score']))
+                    sources.append("history-knn")
+                    top_candidates_list.append([]) # Keine Kandidaten für LLM nötig
+                    knn_match_found = True
+        
+        if knn_match_found:
+            continue
 
-        # A. Bi-Encoder: Cosine Similarity
+        # --- B. Standard Pipeline (Bi-Encoder + Cross-Encoder) ---
+        
+        # Bi-Encoder: Cosine Similarity gegen CODES
         sims = cosine_similarity(v.reshape(1,-1), code_vecs).ravel()
         
-        # Hole mehr Kandidaten für das Re-Ranking (z.B. Top 10 statt 3)
+        # Vorfilterung: Top K
         top_k_prefilter = 10 
         top_k_idx = np.argsort(sims)[-top_k_prefilter:][::-1]
         
-        # B. Cross-Encoder: Re-Ranking
+        # Cross-Encoder: Re-Ranking
         ce_pairs = []
         for idx in top_k_idx:
             code_desc = f"{CODES[idx][1]}. {CODES[idx][2]}"
@@ -202,7 +221,7 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60, progress_
     df["source"] = sources
     
     # 4. LLM Fallback
-    unsure_mask = df["confidence"] < threshold
+    unsure_mask = (df["confidence"] < threshold) & (df["source"] != "history-knn") # KNN Ergebnisse gelten als sicher
     unsure_indices = df[unsure_mask].index
     total_unsure = len(unsure_indices)
 
@@ -219,15 +238,11 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60, progress_
             candidates = top_candidates_list[idx]
             
             # Hole Few-Shot Examples (passend zum aktuellen Vektor)
-            # Wir nutzen hier q_vecs[i]. 'idx' ist der DataFrame Index. Wir müssen den korrekten Vektor finden.
-            # Da q_vecs parallel zu df erstellt wurde, ist q_vecs[i] nicht unbedingt q_vecs[idx] wenn der Index nicht 0..N ist.
-            # ABER: df.iterrows() oben hat linear iteriert und q_vecs gefüllt. 
-            # Wir brauchen den INTEGER Index (Position), nicht das Label.
-            # df.index.get_loc(idx) gibt uns die Position.
+            # Wir nutzen wieder den bereits berechneten Vektor
             pos_idx = df.index.get_loc(idx)
             current_vec = q_vecs[pos_idx]
             
-            hist_examples = get_few_shot_examples(current_vec, df_hist, hist_vecs)
+            hist_examples = get_similar_historical_entries(current_vec, df_hist, hist_vecs, top_k=3)
             
             hist_str = ""
             if hist_examples:
