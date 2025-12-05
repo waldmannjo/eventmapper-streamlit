@@ -5,10 +5,22 @@
 # LLM_MODEL = "gpt-4.1-2025-04-14" # "gpt-4o"  # Stärkeres Modell für Analyse empfohlen
 
 import json
+from backend.synonyms import (
+    STATUS_SYNONYMS,
+    REASON_SYNONYMS_CLASSIC,
+    REASON_SYNONYMS_CONTEXT,
+    REASON_SYNONYMS_COLUMNS
+)
 
 def analyze_structure_step1(client, text: str, model_name: str = "gpt-4o"):
     system_prompt = "Du bist ein Experte für Datenanalyse. Antworte ausschließlich mit validem JSON."
     
+    # Synonym-Listen für den Prompt aufbereiten
+    status_synonyms_str = ", ".join(STATUS_SYNONYMS)
+    reason_classic_str = ", ".join(REASON_SYNONYMS_CLASSIC)
+    reason_context_str = ", ".join(REASON_SYNONYMS_CONTEXT)
+    reason_columns_str = ", ".join(REASON_SYNONYMS_COLUMNS)
+
     user_prompt = f"""
     # Aufgabe
     Analysiere das Dokument (PDF/XLSX) und identifiziere ALLE potenziellen Quellen für Statuscodes und Reason Codes.
@@ -21,14 +33,14 @@ def analyze_structure_step1(client, text: str, model_name: str = "gpt-4o"):
 
     # Begriffe & Synonyme (WICHTIG)
     ## Statuscodes (Status)
-    - Carrier Event code, Event code, Event, Ereignis, Status, Statuscode, Main code, Scanart, Scan-Art, Shipment Event, Container Event, LSP Statuscode, SE, Sendungsereignis, Scannung
+    - {status_synonyms_str}
     ## Reason Codes (Reason/Zusatz)
     1) Klassisch:
-    - additional code, Zusatzcode, reason, error code, substatus, qualifier, reason code
+    - {reason_classic_str}
     2) Im Kontext "Zusatzinformationen" (auch wenn nicht numerisch!):
-    - Zusatz, Zusatzinfo, Zusatztext, Info, Bemerkung, Detail, Beschreibung (sofern als zusätzliche Qualifizierung zum Status verwendet)
+    - {reason_context_str}
     3) Feld-/Spaltennamen, die oft Reason bedeuten:
-    - codes, codelist, code, Zusatzcodes, Code (bei Scans), Remarks/Comment/Details
+    - {reason_columns_str}
 
     # Vorgehen (streng)
     1) Dokumentstruktur erkennen:
