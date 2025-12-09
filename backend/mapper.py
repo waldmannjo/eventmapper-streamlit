@@ -5,6 +5,9 @@ import numpy as np
 import pandas as pd
 import json
 import os
+# Fix for corporate proxy SSL issues when downloading models
+os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
+
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import CrossEncoder
 import streamlit as st # Für Caching des Modells
