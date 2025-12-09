@@ -261,16 +261,20 @@ async def classify_single_row(async_client, row_text, candidates, hist_str, mode
             print(f"LLM Error: {e}")
             return None
 
-async def run_llm_batch_async(api_key, tasks_data, model_name):
+async def run_llm_batch_async(api_key, tasks_data, model_name, progress_callback=None):
     """
     tasks_data: List of dicts { 'index': int, 'text': str, 'candidates': list, 'hist_str': str }
     """
     async_client = AsyncOpenAI(api_key=api_key)
     semaphore = asyncio.Semaphore(15) # Max 15 concurrent requests
     
-    tasks = []
-    for item in tasks_data:
-        task = classify_single_row(
+    total = len(tasks_data)
+    completed = 0
+    
+    async def wrapped_classify(item):
+        nonlocal completed
+        # Task ausführen
+        res = await classify_single_row(
             async_client, 
             item['text'], 
             item['candidates'], 
@@ -278,7 +282,18 @@ async def run_llm_batch_async(api_key, tasks_data, model_name):
             model_name, 
             semaphore
         )
-        tasks.append(task)
+        # Progress updaten
+        completed += 1
+        if progress_callback:
+            # Map progress from 0.7 to 0.99
+            p = 0.7 + (0.29 * (completed / total))
+            progress_callback(p, f"LLM Batch: {completed}/{total} verarbeitet...")
+            
+        return res
+
+    tasks = []
+    for item in tasks_data:
+        tasks.append(wrapped_classify(item))
         
     results = await asyncio.gather(*tasks)
     return results
@@ -434,7 +449,7 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60, progress_
         try:
             # Extract API Key safely
             api_key = client.api_key
-            results = asyncio.run(run_llm_batch_async(api_key, tasks_data, model_name))
+            results = asyncio.run(run_llm_batch_async(api_key, tasks_data, model_name, progress_callback))
             
             # Process Results
             for i, new_code in enumerate(results):
