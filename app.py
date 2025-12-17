@@ -1,3 +1,12 @@
+import os
+# GLOBAL FIX: Disable SSL Verify for Corporate Proxy / Self-Signed Certs
+os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
+os.environ["CURL_CA_BUNDLE"] = ""
+
+import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
 import streamlit as st
 import pandas as pd
 from openai import OpenAI
