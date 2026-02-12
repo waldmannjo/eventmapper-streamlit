@@ -25,6 +25,16 @@ pip install -r requirements.txt
 
 ## Architecture
 
+### Architecture Diagrams
+
+Visual diagrams are maintained in `.memory/diagrams/`:
+- [Folder Structure](.memory/diagrams/structure.md) - Project directory layout and key files
+- [Data Flow](.memory/diagrams/logic.md) - Complete 4-step workflow with API interactions
+- [Component Relationships](.memory/diagrams/components.md) - Module dependencies and responsibilities
+- [UI Workflow](.memory/diagrams/api.md) - Session state management and user interface flow
+
+Review these diagrams to understand the codebase architecture before making changes.
+
 ### 4-Step Workflow
 The application follows a sequential pipeline where each step produces data for the next:
 
