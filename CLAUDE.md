@@ -156,8 +156,8 @@ Adjust `CROSS_ENCODER_MODEL_NAME` or `EMB_MODEL` constants at the top of `mapper
 
 ## Git Workflow
 
-This is a git repository. The main branch is `main`. Recent commits show:
-- SSL/proxy fixes for corporate environments
-- LLM batching optimizations
-- Progress tracking improvements
-- Synonym refactoring for maintainability
+This is a git repository. The main branch is `main`.
+- Create feature branches for all changes
+- Commit frequently with descriptive messages
+- Never push directly to main branch
+- Add and commit automatically when tasks complete
