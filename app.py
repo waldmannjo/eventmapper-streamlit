@@ -2,6 +2,18 @@ import os
 # GLOBAL FIX: Disable SSL Verify for Corporate Proxy / Self-Signed Certs
 os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
 os.environ["CURL_CA_BUNDLE"] = ""
+os.environ["REQUESTS_CA_BUNDLE"] = ""
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+
+import ssl
+# Patch default SSL context to skip verification (corporate proxy)
+_original_create_default_context = ssl.create_default_context
+def _no_verify_ssl_context(*args, **kwargs):
+    ctx = _original_create_default_context(*args, **kwargs)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+ssl.create_default_context = _no_verify_ssl_context
 
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -11,6 +23,8 @@ import streamlit as st
 import pandas as pd
 from openai import OpenAI
 import backend as logic  # <-- Das ist unser neues Modul
+
+VERSION = "0.3.0"
 
 st.set_page_config(page_title="Eventmapper", layout="wide")
 st.title("Eventmapper")
@@ -22,6 +36,19 @@ MODEL_CONFIG = {
     "gpt-5-mini-2025-08-07": {"desc": "A faster, cost-efficient version of GPT-5 for well-defined tasks", "cost": "Input: $0.25, Output: $2"},
     "gpt-5.1-2025-11-13": {"desc": "The best model for coding and agentic tasks with configurable reasoning effort.", "cost": "Input: $1.25, Output: $10"},
     "gpt-4.1-2025-04-14": {"desc": "Smartest non-reasoning model", "cost": "Input: $2, Output: $8"}
+}
+
+# Mapper Configuration (Phase 1 improvements)
+MAPPER_CONFIG = {
+    "use_multilingual_ce": True,
+    "use_bm25": True,
+    "use_keyword_boost": True,
+    "embedding_dimensions": 1024,
+    "knn_threshold": 0.93,
+    "confidence_threshold": 0.60,
+    "top_k_prefilter": 10,
+    "embedding_weight": 0.7,
+    "bm25_weight": 0.3,
 }
 
 def format_model_option(model_key):
@@ -55,12 +82,50 @@ with st.sidebar:
                         df_d = pd.read_csv(debug_file, sep=None, engine="python")
                     else:
                         df_d = pd.read_excel(debug_file)
-                    st.session_state.df_merged = df_d
+                    st.session_state.df_merged = df_d.copy()
                     st.session_state.current_step = 3
                     if not st.session_state.raw_text: st.session_state.raw_text = "DEBUG"
                     st.rerun()
                 except Exception as e:
                     st.error(f"Fehler: {e}")
+
+    st.markdown("---")
+    st.caption(f"Eventmapper v{VERSION}")
+
+    CHANGELOG = {
+        "0.3.0": [
+            "Responses API migration (OpenAI)",
+            "Batched cross-encoder predictions",
+            "Vectorized cosine similarity",
+            "Persistent embedding disk cache",
+            "MAPPER_CONFIG wired into pipeline",
+            "Auto-detect CSV separator",
+        ],
+        "0.2.0": [
+            "BM25 lexical scoring",
+            "Keyword boost for AEB codes",
+            "Multilingual cross-encoder",
+            "Reduced embedding dimensions (1024)",
+        ],
+        "0.1.0": [
+            "Initial release",
+            "Hybrid mapping pipeline (k-NN + Bi-Encoder + Cross-Encoder + LLM)",
+            "Document analysis & extraction",
+        ],
+    }
+
+    with st.popover("What's new?"):
+        versions = list(CHANGELOG.items())
+        latest_ver, latest_items = versions[0]
+        st.markdown(f"**v{latest_ver}**")
+        for item in latest_items:
+            st.markdown(f"- {item}")
+        if len(versions) > 1:
+            with st.expander("Older versions"):
+                for ver, items in versions[1:]:
+                    st.markdown(f"**v{ver}**")
+                    for item in items:
+                        st.markdown(f"- {item}")
 
 # --- State Initialisierung ---
 if "current_step" not in st.session_state:
@@ -214,7 +279,7 @@ if st.session_state.current_step >= 2 and st.session_state.extraction_res:
             if st.button("Weiter zu Schritt 3: Merge & Formatierung"):
                 with st.spinner("Führe Merge durch..."):
                     df_m = logic.merge_data_step3(st.session_state.extraction_res)
-                    st.session_state.df_merged = df_m
+                    st.session_state.df_merged = df_m.copy()
                     st.session_state.current_step = 3
                     st.rerun()
 
@@ -316,11 +381,12 @@ if st.session_state.current_step >= 3:
                         status_text.text(text)
 
                     df_fin = logic.run_mapping_step4(
-                        client, 
-                        st.session_state.df_merged, 
+                        client,
+                        st.session_state.df_merged,
                         model_name=model_step4,
                         threshold=threshold,
-                        progress_callback=update_progress
+                        progress_callback=update_progress,
+                        config=MAPPER_CONFIG
                     )
                     st.session_state.df_final = df_fin
                     st.session_state.current_step = 4

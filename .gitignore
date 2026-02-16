@@ -24,6 +24,11 @@ env/
 *.swo
 *~
 
+# Embedding disk cache
+examples/history_embeddings.npy
+examples/history_df.pkl
+examples/history_cache_meta.json
+
 # OS
 .DS_Store
 Thumbs.db

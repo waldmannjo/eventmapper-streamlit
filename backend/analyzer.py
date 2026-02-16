@@ -92,12 +92,10 @@ def analyze_structure_step1(client, text: str, model_name: str = "gpt-4o"):
     {text}
     """
 
-    response = client.chat.completions.create(
+    response = client.responses.create(
         model=model_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        response_format={"type": "json_object"}
+        instructions=system_prompt,
+        input=user_prompt,
+        text={"format": {"type": "json_object"}}
     )
-    return json.loads(response.choices[0].message.content)
+    return json.loads(response.output_text)

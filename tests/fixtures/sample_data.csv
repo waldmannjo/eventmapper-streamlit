@@ -1,0 +1,4 @@
+Statuscode,Reasoncode,Beschreibung
+01,A,Package arrived at sorting center
+02,B,Customer not available for delivery
+03,C,Held in customs for inspection
