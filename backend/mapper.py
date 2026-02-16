@@ -401,7 +401,16 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60, progress_
     # Phase 2: Batched cross-encoder prediction
     if all_ce_pairs:
         if progress_callback: progress_callback(0.45, f"Cross-Encoder Re-Ranking ({len(all_ce_pairs)} Paare)...")
-        all_ce_scores = ce_model.predict(all_ce_pairs)
+        # Batch CE predictions in chunks to avoid OOM/segfault on large inputs
+        CE_BATCH_SIZE = 2048
+        if len(all_ce_pairs) <= CE_BATCH_SIZE:
+            all_ce_scores = ce_model.predict(all_ce_pairs)
+        else:
+            score_chunks = []
+            for j in range(0, len(all_ce_pairs), CE_BATCH_SIZE):
+                chunk = all_ce_pairs[j:j + CE_BATCH_SIZE]
+                score_chunks.append(ce_model.predict(chunk))
+            all_ce_scores = np.concatenate(score_chunks)
 
         # Unpack batched results back to per-row scores
         offset = 0
@@ -452,10 +461,10 @@ def run_mapping_step4(client, df, model_name, threshold: float = 0.60, progress_
         tasks_data = []
         for i, idx in enumerate(unsure_indices):
             row_text = df.at[idx, 'Beschreibung']
-            candidates = top_candidates_list[idx]
-            
-            # Few-Shot Context
             pos_idx = df.index.get_loc(idx)
+            candidates = top_candidates_list[pos_idx]
+
+            # Few-Shot Context
             current_vec = q_vecs[pos_idx]
             hist_examples = get_similar_historical_entries(current_vec, df_hist, hist_vecs, top_k=3)
             

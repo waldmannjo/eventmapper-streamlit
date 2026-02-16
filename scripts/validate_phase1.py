@@ -50,7 +50,7 @@ def load_validation_data():
 def run_validation(client, val_df, model_name="gpt-4o-mini"):
     """Run mapping on validation set and compute metrics."""
 
-    val_input = val_df.copy()
+    val_input = val_df.copy().reset_index(drop=True)
     val_input['Beschreibung'] = val_input['Description']
 
     print("\nRunning mapping on validation set...")
