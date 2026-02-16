@@ -61,21 +61,20 @@ def extract_data_step2(client, text: str, status_scope: list, reason_scope: list
     {text}
     """
 
-    response = client.chat.completions.create(
+    response = client.responses.create(
         model=model_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        response_format={"type": "json_object"}
+        instructions=system_prompt,
+        input=user_prompt,
+        text={"format": {"type": "json_object"}}
     )
-    return json.loads(response.choices[0].message.content)
+    return json.loads(response.output_text)
 
 def preview_csv_string(csv_str):
     """Hilfsfunktion: Wandelt CSV-String in DataFrame für Preview um."""
     if not csv_str or len(csv_str) < 5:
         return pd.DataFrame()
     try:
-        return pd.read_csv(io.StringIO(csv_str), sep=";", on_bad_lines='skip')
-    except:
+        return pd.read_csv(io.StringIO(csv_str), sep=None, engine='python', on_bad_lines='skip')
+    except (ValueError, pd.errors.ParserError, pd.errors.EmptyDataError) as e:
+        print(f"CSV Preview Error: {e}")
         return pd.DataFrame()
