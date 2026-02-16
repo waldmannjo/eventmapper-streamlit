@@ -44,10 +44,6 @@ Key optimizations:
 - **Streamlit caching** (`@st.cache_resource`) as second-level in-memory cache on top of disk cache
 - Bilingual code definitions in `codes.py` with extensive keyword anchors
 
-### Known Issue: Duplicate Function
-
-`backend/mapper.py` has two definitions of `run_mapping_step4()`. The second one (with all Phase 1 improvements) shadows the first. The first is dead code and should be removed.
-
 ## State Management
 
 The app uses `st.session_state` to persist data across Streamlit reruns:
@@ -120,7 +116,7 @@ Add entries to `codes.py`:
 Keywords significantly improve semantic matching accuracy.
 
 ### Modifying Mapping Logic
-Entry point: `run_mapping_step4()` in `backend/mapper.py` (the SECOND definition). Adjust `CROSS_ENCODER_MODEL_NAME`, `EMB_MODEL`, or `EMB_DIMENSIONS` constants at the top of the file.
+Entry point: `run_mapping_step4()` in `backend/mapper.py`. Adjust `CROSS_ENCODER_MODEL_NAME`, `EMB_MODEL`, or `EMB_DIMENSIONS` constants at the top of the file.
 
 ## Testing
 

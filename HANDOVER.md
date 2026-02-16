@@ -1,8 +1,8 @@
 # HANDOVER - v0.3.0 Optimization Items
 
 **Date:** 2026-02-16
-**Branch:** `feature/phase1-quick-wins`
-**Overall Status:** v0.3.0 committed, not yet merged
+**Branch:** `main`
+**Overall Status:** v0.3.0 merged and pushed to origin
 
 ---
 
@@ -59,9 +59,6 @@ On load: if cache files exist and hash matches, load from disk. Otherwise re-emb
 
 ## Known Issues
 
-### Duplicate `run_mapping_step4()`
-`backend/mapper.py` still has two definitions. The second one (with all improvements) shadows the first. The first is dead code — should be cleaned up.
-
 ### OpenAI SDK Version
 Using `openai==2.8.1`. The Responses API is supported but newer SDK versions may add type hints or helper methods.
 
@@ -69,18 +66,13 @@ Using `openai==2.8.1`. The Responses API is supported but newer SDK versions may
 
 ## Clear Next Steps
 
-### Immediate (before merge)
-1. **Decide on merge strategy** — squash merge, regular merge, or PR via `gh pr create`
-2. **Commit the implementation plan doc** — `docs/plans/2026-02-16-phase1-quick-wins-implementation.md` is untracked
-
-### Short-term (post-merge)
-3. **Clean up duplicate `run_mapping_step4`** — remove the first (dead) definition
-4. **Run validation script** with API key to measure accuracy impact of the optimizations
+### Short-term
+1. **Run validation script** with API key to measure accuracy impact of the optimizations
 
 ### Medium-term (Phase 2)
-5. Confidence calibration (isotonic regression)
-6. Weighted k-NN voting (top-5 instead of top-1)
-7. Fine-tune cross-encoder on domain data
+2. Confidence calibration (isotonic regression)
+3. Weighted k-NN voting (top-5 instead of top-1)
+4. Fine-tune cross-encoder on domain data
 
 See: `docs/plans/2026-02-12-semantic-mapping-improvements-design.md` (Phase 2 section)
 

@@ -32,7 +32,6 @@ Step 4 (mapping) is the core logic. See [ARCHITECTURE.md](ARCHITECTURE.md) for d
 
 - **SSL verification is disabled** globally for corporate proxy compatibility. Do not remove.
 - **Always use the venv** (`.\venv\Scripts\activate`). System Python lacks `sentence-transformers` etc.
-- `backend/mapper.py` has a **duplicate `run_mapping_step4()`** - only the second definition is live. The first is dead code.
 - After changing `EMB_DIMENSIONS`, **delete disk cache** (`examples/history_embeddings.npy`, `history_df.pkl`, `history_cache_meta.json`) and **clear Streamlit cache** to regenerate historical embeddings.
 
 ## Git Workflow
